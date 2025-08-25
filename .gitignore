@@ -143,12 +143,6 @@ cython_debug/
 # VS Code
 .vscode/
 
-# Logs and simulation outputs
-*.log
-pump_usage_log.csv
-simulation_30days.csv
-synthetic_water_data.csv
-
 # Configuration files with sensitive data
 config.ini
 secrets.txt
