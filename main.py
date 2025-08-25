@@ -6,6 +6,10 @@ import os
 import pandas as pd
 from datetime import datetime, timedelta
 import random
+import warnings
+
+# Suppress warnings
+warnings.filterwarnings('ignore')
 
 # Load models
 hour_model = joblib.load('start_hour_model.pkl')
@@ -337,7 +341,7 @@ def main_loop():
                 save_log_to_csv(predicted_hour, predicted_duration, sensor_data)
                 
                 print("✅ Cycle complete. Waiting for next prediction window.")
-                time.sleep(60 * 60)  # Wait 1 hour before rechecking
+                time.sleep(60)  # Wait 1 minute before rechecking
             else:
                 time_diff = predicted_hour - current_hour
                 if time_diff > 0:
@@ -345,8 +349,8 @@ def main_loop():
                 else:
                     print(f"⏳ Next pump cycle in {24 + time_diff:.2f} hours")
                 
-                # Check every 15 minutes instead of every minute
-                time.sleep(15 * 60)
+                # Check every minute
+                time.sleep(60)
 
         except KeyboardInterrupt:
             print("\n🛑 Stopped by user.")
