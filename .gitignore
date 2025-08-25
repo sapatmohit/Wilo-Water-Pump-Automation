@@ -143,13 +143,6 @@ cython_debug/
 # VS Code
 .vscode/
 
-# Project-specific files
-# Machine Learning Models (if large)
-*.pkl
-*.joblib
-*.h5
-*.model
-
 # Data files (exclude large datasets)
 *.csv
 *.xlsx
