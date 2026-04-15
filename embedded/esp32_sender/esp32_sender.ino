@@ -6,7 +6,7 @@
 // ==========================================
 #define SS_PIN   5
 #define RST_PIN  14
-#define DIO0_PIN 26pe
+#define DIO0_PIN 26
 #define BAND     433E6
 
 // ==========================================

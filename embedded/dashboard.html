@@ -54,7 +54,7 @@
   .shell {
     position: relative; z-index: 1;
     display: grid;
-    grid-template-rows: 48px 1fr 180px 52px;
+    grid-template-rows: 48px 1fr 160px 52px;
     height: 100vh;
     padding: 0 28px 0;
     gap: 0;
@@ -90,64 +90,78 @@
   @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.2} }
   .conn-label { font-family: var(--mono); font-size: 11px; color: var(--muted); letter-spacing: 1px; }
 
-  /* ── Main readout ── */
+  /* ── Main readout grid ── */
   .readout {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr 1fr 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    border-bottom: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  .metric-card {
+    background: var(--bg);
     display: flex;
     flex-direction: column;
-    align-items: center;
     justify-content: center;
-    padding: 10px 0 0;
-    gap: 0;
-  }
-
-  .unit-label {
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 4px;
-    color: var(--amber-dim);
-    margin-bottom: 2px;
-  }
-
-  .pressure-value {
-    font-family: var(--display);
-    font-size: clamp(96px, 18vw, 180px);
-    line-height: .88;
-    color: var(--amber);
-    text-shadow: 0 0 60px rgba(245,166,35,.2);
-    transition: color .15s;
+    padding: 18px 24px 14px;
+    gap: 6px;
     position: relative;
+    overflow: hidden;
   }
-  .pressure-value.flash {
-    animation: numflash .25s ease-out;
+  .metric-card::after {
+    content: '';
+    position: absolute; inset: 0; pointer-events: none;
+    background: linear-gradient(135deg, rgba(245,166,35,.03) 0%, transparent 60%);
   }
-  .pressure-value.fault-val { color: var(--red); text-shadow: 0 0 40px rgba(255,59,59,.3); }
+  .metric-card.primary { padding: 22px 28px 18px; }
+
+  .metric-label {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #ffffff;
+    text-transform: uppercase;
+  }
+
+  .metric-val {
+    font-family: var(--display);
+    line-height: 1;
+    color: var(--amber);
+    transition: color .15s;
+  }
+  .metric-val.sz-xl  { font-size: clamp(72px, 10vw, 120px); }
+  .metric-val.sz-lg  { font-size: clamp(56px, 7vw, 90px); }
+  .metric-val.sz-md  { font-size: clamp(36px, 4vw, 58px); }
+
+  .metric-val.flash  { animation: numflash .25s ease-out; }
+  .metric-val.fault-val { color: var(--red) !important; text-shadow: 0 0 30px rgba(255,59,59,.3); }
+
   @keyframes numflash {
-    0%   { text-shadow: 0 0 0px var(--amber), 0 0 60px rgba(245,166,35,.8); color: #fff; }
-    100% { text-shadow: 0 0 60px rgba(245,166,35,.2); color: var(--amber); }
+    0%   { text-shadow: 0 0 0px var(--amber), 0 0 40px rgba(245,166,35,.9); color: #fff; }
+    100% { text-shadow: none; color: var(--amber); }
   }
 
-  .sub-row {
-    display: flex; align-items: center; gap: 32px;
-    margin-top: 14px;
+  .metric-unit {
+    font-family: var(--mono);
+    font-size: 14px;
+    color: #ffffff;
+    letter-spacing: 2px;
+    margin-top: 2px;
   }
-
-  .meta-item {
-    display: flex; flex-direction: column; align-items: center; gap: 2px;
-  }
-  .meta-label { font-size: 10px; font-weight: 700; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
-  .meta-value { font-family: var(--mono); font-size: 18px; color: var(--text); }
-
-  .divider { width: 1px; height: 36px; background: var(--border); }
 
   .status-badge {
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 13px;
     letter-spacing: 3px;
-    padding: 4px 14px;
+    padding: 6px 16px;
     border-radius: 2px;
     border: 1px solid;
     text-transform: uppercase;
     transition: all .3s;
+    display: inline-block;
+    margin-top: 4px;
   }
   .status-badge.ok    { color: var(--green); border-color: var(--green); background: rgba(45,255,126,.06); box-shadow: 0 0 12px rgba(45,255,126,.1); }
   .status-badge.fault { color: var(--red);   border-color: var(--red);   background: rgba(255,59,59,.06);  animation: blink .6s infinite; }
@@ -180,7 +194,7 @@
     display: flex; align-items: center; justify-content: space-between;
     padding: 0 4px;
   }
-  .footer-meta { font-family: var(--mono); font-size: 10px; color: var(--muted); letter-spacing: 1px; }
+  .footer-meta { font-family: var(--mono); font-size: 13px; color: var(--muted); letter-spacing: 1px; }
 
   .restart-btn {
     font-family: var(--ui);
@@ -234,24 +248,32 @@
   </header>
 
   <section class="readout">
-    <div class="unit-label">PRESSURE — kPa</div>
-    <div class="pressure-value" id="pval">—</div>
-    <div class="sub-row">
-      <div class="meta-item">
-        <div class="meta-label">Voltage</div>
-        <div class="meta-value" id="voltage">—</div>
-      </div>
-      <div class="divider"></div>
-      <div class="status-badge connecting" id="status">CONNECTING</div>
-      <div class="divider"></div>
-      <div class="meta-item">
-        <div class="meta-label">Packet</div>
-        <div class="meta-value" id="pkt">#—</div>
-      </div>
-      <div class="divider"></div>
-      <div class="meta-item">
-        <div class="meta-label">MPa</div>
-        <div class="meta-value" id="mpa">—</div>
+    <div class="metric-card primary">
+      <div class="metric-label">Pressure</div>
+      <div class="metric-val sz-xl" id="pval">—</div>
+      <div class="metric-unit">kPa</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Pressure</div>
+      <div class="metric-val sz-lg" id="mpa">—</div>
+      <div class="metric-unit">MPa</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Voltage</div>
+      <div class="metric-val sz-lg" id="voltage">—</div>
+      <div class="metric-unit">Volts</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Packet</div>
+      <div class="metric-val sz-lg" id="pkt">—</div>
+      <div class="metric-unit">Count</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">Capacity</div>
+      <div class="metric-val sz-lg" id="capacity">—</div>
+      <div class="metric-unit">% of 100 kPa</div>
+      <div style="margin-top:8px;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+        <div id="cap-bar" style="height:100%;width:0%;background:var(--amber);border-radius:2px;transition:width .5s ease"></div>
       </div>
     </div>
   </section>
@@ -276,11 +298,13 @@
 const history = [];
 const MAX_PTS = 30;
 
-const pval    = document.getElementById('pval');
-const voltage = document.getElementById('voltage');
-const status  = document.getElementById('status');
-const pktEl   = document.getElementById('pkt');
-const mpaEl   = document.getElementById('mpa');
+const pval     = document.getElementById('pval');
+const voltage  = document.getElementById('voltage');
+const pktEl    = document.getElementById('pkt');
+const mpaEl    = document.getElementById('mpa');
+const capEl    = document.getElementById('capacity');
+const capBar   = document.getElementById('cap-bar');
+const P_MAX    = 100.0; // sensor max kPa
 const tsEl    = document.getElementById('ts');
 const dot     = document.getElementById('conn-dot');
 const label   = document.getElementById('conn-label');
@@ -302,23 +326,25 @@ function update(d) {
   const kpa = d.pressure_kpa;
   const isFault = d.status === 'fault' || kpa < 0;
 
-  // pressure number
-  const prev = pval.textContent;
-  const next = isFault ? 'FAULT' : kpa.toFixed(2);
-  if (prev !== next) {
-    pval.classList.remove('flash');
-    void pval.offsetWidth; // reflow
-    pval.classList.add('flash');
+  function flashUpdate(el, val) {
+    if (el.textContent !== String(val)) {
+      el.classList.remove('flash');
+      void el.offsetWidth;
+      el.classList.add('flash');
+    }
+    el.textContent = val;
+    el.classList.toggle('fault-val', isFault);
   }
-  pval.textContent = next;
-  pval.classList.toggle('fault-val', isFault);
 
-  voltage.textContent = d.voltage.toFixed(3) + ' V';
-  mpaEl.textContent   = isFault ? '—' : d.pressure_mpa.toFixed(4);
-  pktEl.textContent   = '#' + d.packet;
+  flashUpdate(pval,    isFault ? 'FAULT' : kpa.toFixed(2));
+  flashUpdate(mpaEl,   isFault ? '—'     : d.pressure_mpa.toFixed(4));
+  flashUpdate(voltage, d.voltage.toFixed(3));
+  flashUpdate(pktEl,   d.packet);
 
-  status.textContent  = d.status.toUpperCase();
-  status.className    = 'status-badge ' + (isFault ? 'fault' : 'ok');
+  const pct = isFault ? 0 : Math.min(100, (kpa / P_MAX) * 100);
+  capEl.textContent = isFault ? '—' : pct.toFixed(1) + '%';
+  capBar.style.width = pct + '%';
+  capBar.style.background = pct > 80 ? '#ff3b3b' : pct > 60 ? '#f5a623' : '#2dff7e';
 
   setConnState(isFault ? 'fault' : 'live');
 

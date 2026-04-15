@@ -58,11 +58,14 @@ def reader_loop(port, fresh_csv, stop_evt):
         f.flush()
 
     s = None
+    v = st = pkt = None
+
     while not stop_evt.is_set():
         try:
             if s is None or not s.is_open:
                 s = serial.Serial(port, BAUD, timeout=2, dsrdtr=False, rtscts=False)
                 s.setDTR(False); s.setRTS(False)
+                print(f'[serial] opened {port}', flush=True)
                 broadcast({**latest, "status": "connecting"})
 
             raw = s.readline()
@@ -72,29 +75,29 @@ def reader_loop(port, fresh_csv, stop_evt):
             if not line:
                 continue
 
-            # parse
-            global _v, _st, _pkt
             if line.startswith('Sensor Voltage'):
                 m = re.search(r'([\d.]+) V', line)
-                if m: _v = float(m.group(1))
-                _st = 'ok'
+                if m: v = float(m.group(1))
+                st = 'ok'
             elif 'SENSOR FAULT' in line:
-                _st = 'fault'
+                st = 'fault'
             elif line.startswith('LoRa sent'):
                 m = re.search(r'#(\d+)', line)
-                if m: _pkt = int(m.group(1))
-                if _v is not None:
-                    kpa = max(0.0, (_v - 0.5) / 4.0 * 100.0) if _st == 'ok' else -1.0
-                    mpa = kpa / 1000.0 if _st == 'ok' else -1.0
+                if m: pkt = int(m.group(1))
+                if v is not None:
+                    kpa = max(0.0, (v - 0.5) / 4.0 * 100.0) if st == 'ok' else -1.0
+                    mpa = kpa / 1000.0 if st == 'ok' else -1.0
                     ts  = datetime.now().isoformat()
-                    writer.writerow([ts, _pkt, round(_v,3), round(kpa,2), round(mpa,4), _st])
+                    writer.writerow([ts, pkt, round(v,3), round(kpa,2), round(mpa,4), st])
                     f.flush()
-                    broadcast({"packet": _pkt, "voltage": round(_v,3),
+                    broadcast({"packet": pkt, "voltage": round(v,3),
                                "pressure_kpa": round(kpa,2), "pressure_mpa": round(mpa,4),
-                               "status": _st, "timestamp": ts})
-                    _v = _st = _pkt = None
+                               "status": st, "timestamp": ts})
+                    print(f'[data] pkt={pkt} {round(v,3)}V {round(kpa,2)}kPa', flush=True)
+                    v = st = pkt = None
 
-        except serial.SerialException as e:
+        except Exception as e:
+            print(f'[serial error] {e}', flush=True)
             broadcast({**latest, "status": "disconnected"})
             time.sleep(2)
             if s:
@@ -105,8 +108,6 @@ def reader_loop(port, fresh_csv, stop_evt):
         try: s.close()
         except: pass
     f.close()
-
-_v = _st = _pkt = None
 
 def start_reader(fresh=False):
     global reader_thread, stop_event, _v, _st, _pkt
