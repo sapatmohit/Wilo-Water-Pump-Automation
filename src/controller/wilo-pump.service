@@ -1,0 +1,21 @@
+[Unit]
+Description=Wilo Water Pump Controller
+After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/Wilo-Water-Pump-Automation/src/controller
+ExecStart=/usr/bin/python3 pump_controller.py
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Safety: stop pump on service crash
+ExecStopPost=/usr/bin/python3 -c "import RPi.GPIO as G; G.setmode(G.BCM); G.setup(17,G.OUT); G.output(17,G.HIGH); G.cleanup()"
+
+[Install]
+WantedBy=multi-user.target

@@ -6,7 +6,6 @@ and adjust pump operation schedules accordingly.
 """
 
 import pandas as pd
-import numpy as np
 from datetime import datetime, timedelta
 from config.settings import get_absolute_path
 

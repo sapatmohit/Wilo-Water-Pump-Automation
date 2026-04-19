@@ -1,0 +1,131 @@
+"""
+Wilo Water Pump Automation — RPi Configuration
+================================================
+All hardware pins, thresholds, and parameters in one place.
+Edit this file before deployment. Placeholders marked with # PLACEHOLDER.
+"""
+
+import os
+
+# ============================================================
+# GPIO PIN ASSIGNMENTS (BCM numbering)
+# See HARDWARE.md for full wiring diagram
+# ============================================================
+
+# ── LoRa SX1278 Module (SPI0) ──
+LORA_SPI_BUS      = 0
+LORA_SPI_CS       = 0        # CE0 → GPIO 8  (Physical Pin 24)
+LORA_RESET_PIN    = 25       # GPIO 25 (Physical Pin 22)
+LORA_DIO0_PIN     = 24       # GPIO 24 (Physical Pin 18)
+LORA_FREQUENCY    = 433E6    # Must match ESP32
+LORA_SYNC_WORD    = 0xF3     # Must match ESP32
+
+# ── Relay Module (Active-LOW) ──
+RELAY_PUMP_PIN    = 17       # GPIO 17 (Physical Pin 11)
+RELAY_VALVE_PIN   = 27       # GPIO 27 (Physical Pin 13) — spare / inlet valve
+RELAY_ACTIVE_LOW  = True     # Most relay modules trigger on LOW
+
+# ── Manual Override Buttons (normally-open, pull-up) ──
+BUTTON_FORCE_ON   = 22       # GPIO 22 (Physical Pin 15)
+BUTTON_FORCE_OFF  = 5        # GPIO 5  (Physical Pin 29)
+
+# ── Status LED (optional) ──
+LED_STATUS_PIN    = 6        # GPIO 6  (Physical Pin 31)
+
+# ── ADS1115 ADC (I2C1) ──
+ADS1115_ADDRESS   = 0x48     # ADDR → GND
+ADC_CH_CURRENT    = 0        # ACS712T  → A0
+ADC_CH_VOLTAGE    = 1        # ZMPT101B → A1
+
+# ============================================================
+# TANK CONFIGURATION
+# ============================================================
+
+# Upper Tank (rooftop) — measured by ESP32 pressure sensor
+UPPER_TANK_CAPACITY_L  = 25000
+UPPER_TANK_HEIGHT_CM   = 200     # PLACEHOLDER — measure and update!
+UPPER_TANK_DIAMETER_CM = 180     # PLACEHOLDER — measure and update!
+
+# Main / Lower Tank (ground, near pump)
+MAIN_TANK_CAPACITY_L   = 25000
+MAIN_TANK_HEIGHT_CM    = 200     # PLACEHOLDER — measure and update!
+
+# Physics constants for pressure → level conversion
+WATER_DENSITY = 998.0   # kg/m³ at ~20 °C
+GRAVITY       = 9.81    # m/s²
+
+# ============================================================
+# PUMP CONTROL THRESHOLDS (percentage of upper tank)
+# ============================================================
+
+UPPER_CRITICAL_LOW  = 10   # Emergency ON — tank nearly empty
+UPPER_LOW           = 25   # Normal threshold — pump should be running
+UPPER_HIGH          = 85   # Normal threshold — pump can stop
+UPPER_CRITICAL_HIGH = 95   # Emergency OFF — overflow risk
+
+# Hysteresis band: pump turns ON at LOW, turns OFF at HIGH
+# Prevents rapid cycling
+
+# ============================================================
+# ACS712T CURRENT SENSOR
+# ============================================================
+
+ACS712_MODEL          = '30A'           # '5A', '20A', or '30A'
+ACS712_ZERO_V         = 2.5             # Midpoint of 0–5 V supply (V at 0 A)
+ACS712_DIVIDER_RATIO  = 20.0 / (10.0 + 20.0)   # R1=10 kΩ, R2=20 kΩ → 0.6667
+
+# ============================================================
+# ZMPT101B VOLTAGE SENSOR
+# ============================================================
+
+ZMPT101B_CAL_FACTOR    = 1.0    # PLACEHOLDER — calibrate with multimeter
+ZMPT101B_ZERO_V        = 2.5   # Midpoint of 0–5 V supply
+ZMPT101B_DIVIDER_RATIO = 20.0 / (10.0 + 20.0)
+
+# ============================================================
+# PUMP SPECIFICATIONS (Wilo)
+# ============================================================
+
+PUMP_RATED_CURRENT_A     = 8.0    # PLACEHOLDER — check nameplate
+PUMP_MIN_RUNNING_A       = 3.0    # Below = not pumping properly
+PUMP_DRY_RUN_CURRENT_A   = 1.5    # Below while relay ON = dry run
+PUMP_FLOW_RATE_LPM       = 100    # PLACEHOLDER — check Wilo datasheet
+
+# ============================================================
+# SAFETY SETTINGS
+# ============================================================
+
+LORA_TIMEOUT_S           = 60     # No LoRa packet in this time → pump OFF
+MAX_CONTINUOUS_RUN_MIN   = 180    # Hard limit — auto-stop
+DRY_RUN_PROTECTION       = True
+POWER_RESTORE_DELAY_S    = 30     # Wait after power-cut before pump
+
+# ============================================================
+# MANUAL OVERRIDE
+# ============================================================
+
+OVERRIDE_TIMEOUT_MIN     = 60     # Auto-release override after this
+OVERRIDE_DEBOUNCE_MS     = 200    # Button debounce
+
+# ============================================================
+# ML PREDICTION
+# ============================================================
+
+ML_ENABLED               = True
+ML_CHECK_INTERVAL_MIN    = 15     # Re-run prediction cycle
+ML_ACTIVATION_WINDOW_MIN = 5      # Tolerance around predicted start
+
+# ============================================================
+# LOGGING & PATHS
+# ============================================================
+
+_BASE = os.path.dirname(os.path.abspath(__file__))
+_PROJECT = os.path.join(_BASE, '..', '..')
+
+LOG_DIR        = os.path.join(_PROJECT, 'logs', 'pump')
+DATA_DIR       = os.path.join(_PROJECT, 'data')
+CSV_LOG_PATH   = os.path.join(LOG_DIR, 'rpi_pump_log.csv')
+STATE_FILE     = os.path.join(LOG_DIR, 'pump_state.json')
+
+LOOP_INTERVAL_S  = 1    # Main loop cycle
+LOG_INTERVAL_S   = 5    # CSV write interval

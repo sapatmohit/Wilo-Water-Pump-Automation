@@ -12,7 +12,8 @@ Wilo Water Pump Automation/
 ├── README.md                   # Project documentation
 ├── requirements.txt            # Python dependencies
 ├── .gitignore                  # Git ignore rules
-└── .git/                       # Git repository
+├── firmware/                   # Device firmware
+└── src/                        # Main source code
 ```
 
 ### 📁 Configuration (`config/`)
@@ -35,22 +36,27 @@ config/
 ```
 src/
 ├── __init__.py                 # Package initialization
+├── controller/                 # RPi pump controller service
+│   ├── pump_controller.py      # Main service loop
+│   ├── pump_logic.py           # Hybrid decision engine
+│   ├── sensor_reader.py        # ADC/sensor drivers
+│   └── relay_control.py        # GPIO relay control
 ├── core/                       # Core application logic
 │   ├── __init__.py
 │   └── main.py                 # Main application
 ├── dashboard/                  # User interface components
-│   ├── __init__.py
-│   └── terminal_ui.py          # Professional terminal UI
+│   ├── terminal_ui.py          # Terminal UI
+│   ├── server.py               # SSE Flask server
+│   └── monitor.py              # CLI monitor
 ├── models/                     # Machine learning components
 │   ├── __init__.py
 │   └── prediction.py           # Prediction algorithms
 ├── simulation/                 # Simulation modules
-│   ├── __init__.py
 │   ├── run_simulation.py       # Basic simulation
 │   └── simulation_30days.py    # Extended simulation
 └── utils/                      # Utility modules
-    ├── __init__.py
     ├── data_handler.py         # Data processing
+    ├── holiday_predictor.py    # Holiday logic
     └── sensors.py              # Sensor management
 ```
 
@@ -126,21 +132,30 @@ tests/
 - Regression testing
 - System verification
 
+### 📁 Firmware (`firmware/`)
+
+```
+firmware/
+└── esp32_sender/               # ESP32 LoRa transmitter code
+    └── esp32_sender.ino        # Arduino sketch
+```
+
+**Purpose**: Hardware-level code for remote sensors.
+
 ### 📁 Documentation (`docs/`)
 
 ```
 docs/
-├── api/                        # API documentation
-│   └── functions.md
-├── user/                       # User guides
-│   └── user_manual.md
-└── PROJECT_STRUCTURE.md       # This file
+├── HARDWARE.md                 # Wiring & GPIO guide
+├── DASHBOARD.md                # Web dashboard notes
+├── HARDWARE_GUIDE.md           # Sensor calibration guide
+└── PROJECT_STRUCTURE.md        # This file
 ```
 
 **Purpose**: Knowledge management
 
 - Technical documentation
-- User guides
+- Hardware wiring guides
 - Architecture documentation
 
 ### 📁 Scripts (`scripts/`)

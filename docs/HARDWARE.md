@@ -1,0 +1,295 @@
+# Wilo Pump Automation — Complete Hardware Wiring Guide
+
+> **System**: ESP32 (upper tank) ↔ LoRa 433 MHz ↔ RPi Zero 2W (pump room)
+
+---
+
+## Overview
+
+```
+┌─────────────────────────────────┐        LoRa 433 MHz        ┌──────────────────────────────────────┐
+│        UPPER TANK (Roof)        │ ~~~~~~~~~~~~~~~~~~~~~~~~>  │      MAIN TANK / PUMP ROOM           │
+│                                 │                            │                                      │
+│  PR12 P210 Pressure Sensor      │                            │  RPi Zero 2W                         │
+│        ↓ (0.5–4.5 V)           │                            │   ├─ SX1278 LoRa Module (SPI)        │
+│  Voltage Divider (10k+20k)      │                            │   ├─ ADS1115 ADC (I2C)               │
+│        ↓ (0–3.0 V)             │                            │   │   ├─ ACS712T-30A (current)        │
+│  ESP32 GPIO34 (ADC)             │                            │   │   └─ ZMPT101B (voltage)           │
+│        ↓                        │                            │   ├─ 2-CH Relay Module                │
+│  SX1278 LoRa Module (SPI)       │                            │   ├─ Manual Override Buttons (×2)     │
+│                                 │                            │   └─ Status LED                       │
+└─────────────────────────────────┘                            └──────────────────────────────────────┘
+```
+
+---
+
+## 1. RPi Zero 2W → SX1278 LoRa Module (SPI0)
+
+| SX1278 Pin | RPi Physical Pin | RPi GPIO (BCM) | Wire Colour (suggested) |
+|------------|-----------------|----------------|------------------------|
+| **VCC**    | Pin 1           | 3.3V           | 🔴 Red                |
+| **GND**    | Pin 6           | GND            | ⚫ Black              |
+| **MISO**   | Pin 21          | GPIO 9         | 🟡 Yellow             |
+| **MOSI**   | Pin 19          | GPIO 10        | 🟢 Green              |
+| **SCK**    | Pin 23          | GPIO 11        | 🟠 Orange             |
+| **NSS/CS** | Pin 24          | GPIO 8 (CE0)   | 🔵 Blue               |
+| **RST**    | Pin 22          | GPIO 25        | ⚪ White              |
+| **DIO0**   | Pin 18          | GPIO 24        | 🟣 Purple             |
+
+> ⚠️ **SX1278 is 3.3V only. DO NOT connect VCC to 5V!**
+> ⚠️ **Antenna MUST be connected before powering on.**
+
+---
+
+## 2. RPi → ADS1115 ADC Module (I2C1)
+
+| ADS1115 Pin | RPi Physical Pin | RPi GPIO (BCM) | Notes                  |
+|-------------|-----------------|----------------|------------------------|
+| **VDD**     | Pin 1           | 3.3V           | Power                  |
+| **GND**     | Pin 9           | GND            | Ground                 |
+| **SDA**     | Pin 3           | GPIO 2 (SDA1)  | I2C Data               |
+| **SCL**     | Pin 5           | GPIO 3 (SCL1)  | I2C Clock              |
+| **ADDR**    | → GND           | —              | Address = 0x48         |
+| **A0**      | ← ACS712T OUT   | —              | Current sensor input   |
+| **A1**      | ← ZMPT101B OUT  | —              | Voltage sensor input   |
+
+> ⚠️ Enable I2C: `sudo raspi-config` → Interface Options → I2C → Yes → Reboot
+
+### ADS1115 Required Setup
+```bash
+# Verify I2C is working
+sudo i2cdetect -y 1
+# Should show 0x48
+```
+
+---
+
+## 3. ACS712T-30A Current Sensor → ADS1115
+
+The ACS712T outputs 0–5V but ADS1115 (at gain=1) reads up to ±4.096V.
+**You MUST use a voltage divider** to scale 0–5V → 0–3.3V.
+
+```
+                 ACS712T
+              ┌───────────┐
+  Pump Live ──┤ IP+   IP- ├── Pump Load
+              │           │
+      5V   ───┤ VCC       │
+      GND  ───┤ GND  OUT ─┼──┐
+              └───────────┘  │
+                             │
+              Voltage Divider:
+                             │
+                        ┌────┤
+                        │   R1 = 10 kΩ
+                        │    │
+                        │    ├──────── → ADS1115 A0
+                        │    │
+                        │   R2 = 20 kΩ
+                        │    │
+                        └────┴──────── → GND
+```
+
+**Scaling**: V_adc = V_out × 20/(10+20) = V_out × 0.6667
+- At 0A: V_out = 2.5V → V_adc = 1.667V ✓
+- At 30A: V_out = 4.48V → V_adc = 2.987V ✓ (within ADS1115 range)
+
+### ACS712T Power
+| Pin   | Connection        |
+|-------|-------------------|
+| VCC   | 5V (RPi Pin 2)    |
+| GND   | GND (RPi Pin 14)  |
+| OUT   | Via divider → ADS1115 A0 |
+
+> ⚠️ The ACS712T measures current through the **IP+ / IP-** terminals.
+> Route one of the pump's live wires through these terminals.
+
+---
+
+## 4. ZMPT101B Voltage Sensor → ADS1115
+
+Same voltage divider approach as ACS712T.
+
+```
+              ZMPT101B
+           ┌────────────┐
+  AC Live ─┤            ├─ AC Neutral (or same Live)
+           │            │
+    5V  ───┤ VCC   OUT ─┼──┐
+    GND ───┤ GND        │  │
+           └────────────┘  │
+                           │
+              Voltage Divider:
+                           │
+                      ┌────┤
+                      │   R1 = 10 kΩ
+                      │    │
+                      │    ├──────── → ADS1115 A1
+                      │    │
+                      │   R2 = 20 kΩ
+                      │    │
+                      └────┴──────── → GND
+```
+
+### ZMPT101B Power
+| Pin   | Connection        |
+|-------|-------------------|
+| VCC   | 5V (RPi Pin 4)    |
+| GND   | GND (RPi Pin 14)  |
+| OUT   | Via divider → ADS1115 A1 |
+
+> ⚠️ **ZMPT101B must be calibrated**: Compare its reading with a known multimeter.
+> Adjust `ZMPT101B_CAL_FACTOR` in `tank_config.py`.
+
+---
+
+## 5. RPi → 2-Channel Relay Module
+
+| Relay Pin | RPi Physical Pin | RPi GPIO (BCM) | Function              |
+|-----------|-----------------|----------------|-----------------------|
+| **VCC**   | Pin 2           | 5V             | Relay power           |
+| **GND**   | Pin 20          | GND            | Ground                |
+| **IN1**   | Pin 11          | GPIO 17        | **Pump ON/OFF**       |
+| **IN2**   | Pin 13          | GPIO 27        | Spare / inlet valve   |
+
+> Most relay modules are **active-LOW** (IN=LOW → relay ON).
+> Set `RELAY_ACTIVE_LOW = True` in `tank_config.py` (default).
+
+### Relay → Pump Wiring
+```
+                    Relay Module
+              ┌───────────────────┐
+    GPIO 17 ──┤ IN1               │
+              │          COM1  ───┼─── Mains Live (from MCB)
+              │          NO1  ────┼─── Pump Live Input
+              │                   │
+    GPIO 27 ──┤ IN2               │
+              │          COM2  ───┼─── (Spare)
+              │          NO2  ────┼─── (Spare)
+              │                   │
+    5V     ───┤ VCC               │
+    GND    ───┤ GND               │
+              └───────────────────┘
+```
+
+> **NO** = Normally Open (pump OFF when relay is not energised = safe default)
+> ⚠️ Use a relay rated for your pump's current (typically 10A+ for pump motors).
+
+---
+
+## 6. Manual Override Buttons
+
+Two normally-open momentary push buttons with internal pull-ups.
+
+| Button          | RPi Physical Pin | RPi GPIO (BCM) | Function        |
+|-----------------|-----------------|----------------|-----------------|
+| **Force ON**    | Pin 15          | GPIO 22        | Override pump ON  |
+| **Force OFF**   | Pin 29          | GPIO 5         | Override pump OFF |
+
+### Wiring (each button)
+```
+    RPi GPIO pin ──── Button ──── GND (any GND pin)
+       (pull-up enabled in software)
+```
+
+> Pressing the button pulls GPIO LOW → detected as pressed.
+> Override auto-expires after 60 minutes (configurable).
+
+---
+
+## 7. Status LED
+
+| LED              | RPi Physical Pin | RPi GPIO (BCM) | Notes              |
+|------------------|-----------------|----------------|--------------------|
+| **Pump Status**  | Pin 31          | GPIO 6         | ON = pump running  |
+
+### Wiring
+```
+    GPIO 6 ── 330Ω resistor ── LED (+) ── LED (-) ── GND
+```
+
+---
+
+## 8. Complete RPi GPIO Pin Map
+
+```
+                    RPi Zero 2W
+              ┌─────────┬─────────┐
+     3.3V [1] │ ●     ● │ [2] 5V       ← ACS712/ZMPT101B/Relay VCC
+  I2C SDA [3] │ ●     ● │ [4] 5V
+  I2C SCL [5] │ ●     ● │ [6] GND      ← Common ground
+          [7] │ ○     ○ │ [8]
+      GND [9] │ ●     ○ │ [10]
+ RELAY P [11] │ ●     ○ │ [12]          GPIO 17 → Pump relay IN1
+ RELAY V [13] │ ●     ○ │ [14] GND     GPIO 27 → Valve relay IN2
+  BTN ON [15] │ ●     ○ │ [16]          GPIO 22 → Force ON button
+     3.3V [17]│ ●     ● │ [18] DIO0    ← LoRa DIO0 (GPIO 24)
+ SPI MOSI [19]│ ●     ○ │ [20] GND
+ SPI MISO [21]│ ●     ● │ [22] RST     ← LoRa RST (GPIO 25)
+  SPI SCK [23]│ ●     ● │ [24] SPI CE0 ← LoRa NSS (GPIO 8)
+      GND [25]│ ●     ○ │ [26]
+          [27]│ ○     ○ │ [28]
+ BTN OFF [29] │ ●     ○ │ [30] GND     GPIO 5 → Force OFF button
+  LED    [31] │ ●     ○ │ [32]          GPIO 6 → Status LED
+          [33]│ ○     ○ │ [34] GND
+          [35]│ ○     ○ │ [36]
+          [37]│ ○     ○ │ [38]
+      GND [39]│ ●     ○ │ [40]
+              └─────────┴─────────┘
+
+● = Used    ○ = Available
+```
+
+---
+
+## 9. Shopping List (if missing)
+
+| Item | Purpose | Approx. Price |
+|------|---------|--------------|
+| **ADS1115** 16-bit I2C ADC | Read ACS712T + ZMPT101B analog outputs | ₹150–250 |
+| **2-channel relay module** (5V, optocoupler) | Control pump power | ₹80–120 |
+| **10 kΩ resistors** (×2) | Voltage dividers for sensor outputs | ₹5 |
+| **20 kΩ resistors** (×2) | Voltage dividers for sensor outputs | ₹5 |
+| **330 Ω resistor** (×1) | Status LED current limiter | ₹2 |
+| **LED** (any colour) | Pump status indicator | ₹5 |
+| **Push buttons** (×2) | Manual override ON/OFF | ₹10 |
+| **Jumper wires** | Connections | ₹50 |
+
+> ⚠️ **ADS1115 is REQUIRED** for current/voltage sensing. Without it,
+> the system will still work using LoRa pressure data only (degraded mode).
+
+---
+
+## 10. Software Setup on RPi
+
+```bash
+# 1. Enable SPI and I2C
+sudo raspi-config
+# → Interface Options → SPI → Yes
+# → Interface Options → I2C → Yes
+# → Reboot
+
+# 2. Clone/copy project
+cd ~
+git clone <repo-url> Wilo-Water-Pump-Automation
+cd Wilo-Water-Pump-Automation/embedded/rpi_receiver
+
+# 3. Install Python dependencies
+pip3 install -r requirements.txt
+
+# 4. Test (dry-run, no GPIO needed)
+python3 pump_controller.py --dry-run --verbose
+
+# 5. Test LoRa reception (with ESP32 powered on)
+python3 receiver.py
+
+# 6. Run for real
+python3 pump_controller.py --verbose
+
+# 7. Install as system service (auto-start on boot)
+sudo cp wilo-pump.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable wilo-pump
+sudo systemctl start wilo-pump
+sudo journalctl -u wilo-pump -f   # watch logs
+```

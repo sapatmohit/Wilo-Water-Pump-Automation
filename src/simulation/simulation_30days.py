@@ -8,17 +8,19 @@ from datetime import datetime, timedelta
 import random
 import warnings
 
+from config.settings import get_absolute_path, START_HOUR_MODEL_PATH, DURATION_MODEL_PATH
+
 # Suppress sklearn warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 
 # Load models
-hour_model = joblib.load('start_hour_model.pkl')
-dur_model = joblib.load('duration_model.pkl')
+hour_model = joblib.load(START_HOUR_MODEL_PATH)
+dur_model = joblib.load(DURATION_MODEL_PATH)
 
 # CSV files
-LOG_FILE = 'pump_usage_log.csv'
-HISTORICAL_DATA_FILE = 'synthetic_water_data.csv'
-SIMULATION_LOG_FILE = 'simulation_30days.csv'
+LOG_FILE = get_absolute_path('data/raw/pump_usage_log.csv')
+HISTORICAL_DATA_FILE = get_absolute_path('data/raw/synthetic_water_data.csv')
+SIMULATION_LOG_FILE = get_absolute_path('data/raw/simulation_30days.csv')
 
 # Global variable to store historical data
 historical_data = None
