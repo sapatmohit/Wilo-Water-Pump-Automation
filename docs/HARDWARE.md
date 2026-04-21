@@ -12,11 +12,11 @@
 │                                 │                            │                                      │
 │  PR12 P210 Pressure Sensor      │                            │  RPi Zero 2W                         │
 │        ↓ (0.5–4.5 V)           │                            │   ├─ SX1278 LoRa Module (SPI)        │
-│  Voltage Divider (10k+20k)      │                            │   ├─ ADS1115 ADC (I2C)               │
-│        ↓ (0–3.0 V)             │                            │   │   ├─ ACS712T-30A (current)        │
-│  ESP32 GPIO34 (ADC)             │                            │   │   └─ ZMPT101B (voltage)           │
-│        ↓                        │                            │   ├─ 2-CH Relay Module                │
-│  SX1278 LoRa Module (SPI)       │                            │   ├─ Manual Override Buttons (×2)     │
+│  ESP32 GPIO34 (ADC)             │                            │   ├─ ADS1115 ADC (I2C)               │
+│        ↓                        │                            │   │   ├─ ACS712T-30A (current)        │
+│  SX1278 LoRa Module (SPI)       │                            │   │   └─ ZMPT101B (voltage)           │
+│                                 │                            │   ├─ 2-CH Relay Module                │
+│                                 │                            │   ├─ Manual Override Buttons (×2)     │
 │                                 │                            │   └─ Status LED                       │
 └─────────────────────────────────┘                            └──────────────────────────────────────┘
 ```
@@ -45,14 +45,15 @@
 
 | ADS1115 Pin | RPi Physical Pin | RPi GPIO (BCM) | Notes                  |
 |-------------|-----------------|----------------|------------------------|
-| **VDD**     | Pin 1           | 3.3V           | Power                  |
+| **VDD**     | Pin 2           | 5V             | Power (allows 0–5V inputs) |
 | **GND**     | Pin 9           | GND            | Ground                 |
-| **SDA**     | Pin 3           | GPIO 2 (SDA1)  | I2C Data               |
-| **SCL**     | Pin 5           | GPIO 3 (SCL1)  | I2C Clock              |
+| **SDA**     | Pin 3           | GPIO 2 (SDA1)  | I2C Data (3.3V logic)  |
+| **SCL**     | Pin 5           | GPIO 3 (SCL1)  | I2C Clock (3.3V logic) |
 | **ADDR**    | → GND           | —              | Address = 0x48         |
 | **A0**      | ← ACS712T OUT   | —              | Current sensor input   |
 | **A1**      | ← ZMPT101B OUT  | —              | Voltage sensor input   |
 
+> ⚠️ **Caution**: Since ADS1115 is now powered by 5V, ensure your module's I2C pull-up resistors (if any) are not pulling SDA/SCL to 5V. RPi pins are 3.3V only.
 > ⚠️ Enable I2C: `sudo raspi-config` → Interface Options → I2C → Yes → Reboot
 
 ### ADS1115 Required Setup
@@ -66,8 +67,7 @@ sudo i2cdetect -y 1
 
 ## 3. ACS712T-30A Current Sensor → ADS1115
 
-The ACS712T outputs 0–5V but ADS1115 (at gain=1) reads up to ±4.096V.
-**You MUST use a voltage divider** to scale 0–5V → 0–3.3V.
+The ACS712T outputs 0–5V. Note that if ADS1115 is powered at 3.3V, its inputs should ideally stay below 3.3V. 
 
 ```
                  ACS712T
@@ -75,31 +75,20 @@ The ACS712T outputs 0–5V but ADS1115 (at gain=1) reads up to ±4.096V.
   Pump Live ──┤ IP+   IP- ├── Pump Load
               │           │
       5V   ───┤ VCC       │
-      GND  ───┤ GND  OUT ─┼──┐
-              └───────────┘  │
-                             │
-              Voltage Divider:
-                             │
-                        ┌────┤
-                        │   R1 = 10 kΩ
-                        │    │
-                        │    ├──────── → ADS1115 A0
-                        │    │
-                        │   R2 = 20 kΩ
-                        │    │
-                        └────┴──────── → GND
+      GND  ───┤ GND  OUT ─┼────────────── → ADS1115 A0
+              └───────────┘
 ```
 
-**Scaling**: V_adc = V_out × 20/(10+20) = V_out × 0.6667
-- At 0A: V_out = 2.5V → V_adc = 1.667V ✓
-- At 30A: V_out = 4.48V → V_adc = 2.987V ✓ (within ADS1115 range)
+**Scaling**: V_adc = V_out
+- At 0A: V_out = 2.5V → V_adc = 2.5V
+- At 30A: V_out = 4.48V → V_adc = 4.48V (No clipping since ADS1115 VDD = 5V)
 
 ### ACS712T Power
 | Pin   | Connection        |
 |-------|-------------------|
 | VCC   | 5V (RPi Pin 2)    |
 | GND   | GND (RPi Pin 14)  |
-| OUT   | Via divider → ADS1115 A0 |
+| OUT   | Direct to ADS1115 A0 |
 
 > ⚠️ The ACS712T measures current through the **IP+ / IP-** terminals.
 > Route one of the pump's live wires through these terminals.
@@ -108,27 +97,14 @@ The ACS712T outputs 0–5V but ADS1115 (at gain=1) reads up to ±4.096V.
 
 ## 4. ZMPT101B Voltage Sensor → ADS1115
 
-Same voltage divider approach as ACS712T.
-
 ```
               ZMPT101B
            ┌────────────┐
   AC Live ─┤            ├─ AC Neutral (or same Live)
            │            │
-    5V  ───┤ VCC   OUT ─┼──┐
-    GND ───┤ GND        │  │
-           └────────────┘  │
-                           │
-              Voltage Divider:
-                           │
-                      ┌────┤
-                      │   R1 = 10 kΩ
-                      │    │
-                      │    ├──────── → ADS1115 A1
-                      │    │
-                      │   R2 = 20 kΩ
-                      │    │
-                      └────┴──────── → GND
+    5V  ───┤ VCC   OUT ─┼──────────────── → ADS1115 A1
+    GND ───┤ GND        │
+           └────────────┘
 ```
 
 ### ZMPT101B Power
@@ -136,7 +112,7 @@ Same voltage divider approach as ACS712T.
 |-------|-------------------|
 | VCC   | 5V (RPi Pin 4)    |
 | GND   | GND (RPi Pin 14)  |
-| OUT   | Via divider → ADS1115 A1 |
+| OUT   | Direct to ADS1115 A1 |
 
 > ⚠️ **ZMPT101B must be calibrated**: Compare its reading with a known multimeter.
 > Adjust `ZMPT101B_CAL_FACTOR` in `tank_config.py`.
@@ -215,7 +191,7 @@ Two normally-open momentary push buttons with internal pull-ups.
 ```
                     RPi Zero 2W
               ┌─────────┬─────────┐
-     3.3V [1] │ ●     ● │ [2] 5V       ← ACS712/ZMPT101B/Relay VCC
+     3.3V [1] │ ●     ● │ [2] 5V       ← ADS1115/ACS712/ZMPT101B/Relay VCC
   I2C SDA [3] │ ●     ● │ [4] 5V
   I2C SCL [5] │ ●     ● │ [6] GND      ← Common ground
           [7] │ ○     ○ │ [8]
@@ -248,12 +224,10 @@ Two normally-open momentary push buttons with internal pull-ups.
 |------|---------|--------------|
 | **ADS1115** 16-bit I2C ADC | Read ACS712T + ZMPT101B analog outputs | ₹150–250 |
 | **2-channel relay module** (5V, optocoupler) | Control pump power | ₹80–120 |
-| **10 kΩ resistors** (×2) | Voltage dividers for sensor outputs | ₹5 |
-| **20 kΩ resistors** (×2) | Voltage dividers for sensor outputs | ₹5 |
+| **Jumper wires** | Connections | ₹50 |
 | **330 Ω resistor** (×1) | Status LED current limiter | ₹2 |
 | **LED** (any colour) | Pump status indicator | ₹5 |
 | **Push buttons** (×2) | Manual override ON/OFF | ₹10 |
-| **Jumper wires** | Connections | ₹50 |
 
 > ⚠️ **ADS1115 is REQUIRED** for current/voltage sensing. Without it,
 > the system will still work using LoRa pressure data only (degraded mode).

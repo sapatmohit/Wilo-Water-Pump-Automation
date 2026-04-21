@@ -72,7 +72,7 @@ UPPER_CRITICAL_HIGH = 95   # Emergency OFF — overflow risk
 
 ACS712_MODEL          = '30A'           # '5A', '20A', or '30A'
 ACS712_ZERO_V         = 2.5             # Midpoint of 0–5 V supply (V at 0 A)
-ACS712_DIVIDER_RATIO  = 20.0 / (10.0 + 20.0)   # R1=10 kΩ, R2=20 kΩ → 0.6667
+ACS712_DIVIDER_RATIO  = 1.0   # No voltage divider used
 
 # ============================================================
 # ZMPT101B VOLTAGE SENSOR
@@ -80,7 +80,7 @@ ACS712_DIVIDER_RATIO  = 20.0 / (10.0 + 20.0)   # R1=10 kΩ, R2=20 kΩ → 0.6667
 
 ZMPT101B_CAL_FACTOR    = 1.0    # PLACEHOLDER — calibrate with multimeter
 ZMPT101B_ZERO_V        = 2.5   # Midpoint of 0–5 V supply
-ZMPT101B_DIVIDER_RATIO = 20.0 / (10.0 + 20.0)
+ZMPT101B_DIVIDER_RATIO = 1.0
 
 # ============================================================
 # PUMP SPECIFICATIONS (Wilo)

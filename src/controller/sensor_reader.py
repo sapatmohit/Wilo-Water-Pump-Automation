@@ -4,8 +4,8 @@ Current & Voltage Sensor Reader (ADS1115 + ACS712T + ZMPT101B)
 Reads analog sensors via ADS1115 I2C ADC on the Raspberry Pi.
 
 IMPORTANT: Both ACS712T and ZMPT101B output 0-5 V.
-           You MUST use a voltage divider (R1=10 kΩ, R2=20 kΩ)
-           to bring the signal into 0-3.3 V range for the ADS1115.
+           The ADS1115 must be powered by 5V and configured with
+           gain=2/3 to read the full range without a voltage divider.
            See HARDWARE.md for wiring.
 
 If the ADS1115 is not connected, this module operates in
@@ -36,8 +36,8 @@ class SensorReader:
     """Reads ACS712T (current) and ZMPT101B (voltage) via ADS1115."""
 
     def __init__(self, acs_model='30A', acs_zero_v=2.5,
-                 acs_divider=0.6667, zmpt_cal=1.0,
-                 zmpt_zero_v=2.5, zmpt_divider=0.6667,
+                 acs_divider=1.0, zmpt_cal=1.0,
+                 zmpt_zero_v=2.5, zmpt_divider=1.0,
                  adc_addr=0x48, ch_current=0, ch_voltage=1):
         self.sensitivity = {'5A': 0.185, '20A': 0.100, '30A': 0.066}[acs_model]
         self.acs_zero    = acs_zero_v
@@ -62,7 +62,7 @@ class SensorReader:
         try:
             i2c = busio.I2C(board.SCL, board.SDA)
             self.ads = ADS.ADS1115(i2c, address=self.adc_addr)
-            self.ads.gain = 1                       # ±4.096 V
+            self.ads.gain = 2/3                     # ±6.144 V (allows 0-5 V)
             ch = [ADS.P0, ADS.P1, ADS.P2, ADS.P3]
             self.chan_i = AnalogIn(self.ads, ch[self.ch_i])
             self.chan_v = AnalogIn(self.ads, ch[self.ch_v])

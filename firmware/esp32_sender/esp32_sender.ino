@@ -14,8 +14,10 @@
 // ==========================================
 #define SENSOR_PIN        34      // Analog input (GPIO34, input-only)
 
-// Voltage divider: R1=10kΩ, R2=20kΩ  →  scale = 20/(10+20) = 0.6667
-#define DIVIDER_RATIO     0.6667f
+// No voltage divider: Set to 1.0. 
+// ⚠️ WARNING: ESP32 GPIO34 is NOT 5V tolerant. 
+// Sensor output > 3.3V will be capped and may damage the pin!
+#define DIVIDER_RATIO     1.0f
 
 // Sensor spec: 0.5V = 0 MPa, 4.5V = 0.1 MPa
 #define V_MIN             0.5f    // V at 0 pressure
