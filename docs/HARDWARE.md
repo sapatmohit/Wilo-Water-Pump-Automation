@@ -261,9 +261,9 @@ python3 receiver.py
 python3 pump_controller.py --verbose
 
 # 7. Install as system service (auto-start on boot)
-sudo cp wilo-pump.service /etc/systemd/system/
+sudo cp wilo-lora-csv-receiver.service /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable wilo-pump
-sudo systemctl start wilo-pump
-sudo journalctl -u wilo-pump -f   # watch logs
+sudo systemctl enable wilo-lora-csv-receiver
+sudo systemctl start wilo-lora-csv-receiver
+sudo journalctl -u wilo-lora-csv-receiver -f   # watch logs
 ```

@@ -123,8 +123,10 @@ _BASE = os.path.dirname(os.path.abspath(__file__))
 _PROJECT = os.path.join(_BASE, '..', '..')
 
 LOG_DIR        = os.path.join(_PROJECT, 'logs', 'pump')
+LORA_LOG_DIR   = os.path.join(_PROJECT, 'logs', 'lora')
 DATA_DIR       = os.path.join(_PROJECT, 'data')
 CSV_LOG_PATH   = os.path.join(LOG_DIR, 'rpi_pump_log.csv')
+LORA_PACKET_CSV_PATH = os.path.join(LORA_LOG_DIR, 'esp32_pressure_packets.csv')
 STATE_FILE     = os.path.join(LOG_DIR, 'pump_state.json')
 
 LOOP_INTERVAL_S  = 1    # Main loop cycle

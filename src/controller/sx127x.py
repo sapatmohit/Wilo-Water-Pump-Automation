@@ -93,26 +93,27 @@ class SX127x:
         
         self.set_frequency(self.frequency)
         
-        # Default config: Bw125Cr45Sf128 (Standard Arduino LoRa lib settings often use: SF7, BW125)
-        # We will match Arduino LoRa lib defaults: SF7, BW 125kHz, CR 4/5
+        # Match the Arduino LoRa library defaults used by the ESP32 sender:
+        # SF7, BW 125 kHz, CR 4/5, explicit header, CRC off.
+        self.write_register(REG_FIFO_TX_BASE_ADDR, 0x00)
+        self.write_register(REG_FIFO_RX_BASE_ADDR, 0x00)
+        self.write_register(REG_LNA, self.read_register(REG_LNA) | 0x03)
+        self.write_register(REG_MODEM_CONFIG_3, 0x04)
         
         # Config 1: Bw=125kHz (0x70), CR=4/5 (0x02) -> 0x72
         self.write_register(REG_MODEM_CONFIG_1, 0x72)
         
-        # Config 2: SF=7 (0x70) | CRC On (0x04) -> 0x74
-        self.write_register(REG_MODEM_CONFIG_2, 0x74)
+        # Config 2: SF=7, CRC disabled to match the Arduino LoRa sender.
+        self.write_register(REG_MODEM_CONFIG_2, 0x70)
         
-        # Config 3: AGC Auto On
-        self.write_register(REG_MODEM_CONFIG_3, 0x04)
-
         # Preamble length 8
         self.write_register(REG_PREAMBLE_MSB, 0x00)
         self.write_register(REG_PREAMBLE_LSB, 0x08)
 
         # Sync Word
         self.write_register(REG_SYNC_WORD, 0xF3)
-        
-        # PA Boost (Output 17dBm approx)
+
+        # PA Boost (kept for parity with the Arduino sender setup)
         self.write_register(REG_PA_CONFIG, PA_BOOST | 0xF)
 
     def set_frequency(self, freq):
@@ -129,7 +130,9 @@ class SX127x:
         self.write_register(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_STDBY)
 
     def receive(self):
+        self.write_register(REG_FIFO_ADDR_PTR, 0x00)
         self.write_register(REG_DIO_MAPPING_1, 0x00) # DIO0 -> RxDone
+        self.write_register(REG_IRQ_FLAGS, 0xFF)
         self.write_register(REG_OP_MODE, MODE_LONG_RANGE_MODE | MODE_RX_CONTINUOUS)
 
     def available(self):
@@ -143,7 +146,7 @@ class SX127x:
     
     def get_packet_rssi(self):
         rssi = self.read_register(REG_PKT_RSSI_VALUE)
-        return rssi - 157 # For HF port (868/915), use -164 for LF (433) approx. Logic may vary slightly by chip.
+        return rssi - 164 # 433 MHz low-band offset for SX1278
 
     def get_packet_snr(self):
         raw_snr = self.read_register(REG_PKT_SNR_VALUE)

@@ -80,6 +80,11 @@ void setup() {
     Serial.println("ERROR: LoRa init failed! Check wiring.");
     while (1);
   }
+  LoRa.setSpreadingFactor(7);
+  LoRa.setSignalBandwidth(125E3);
+  LoRa.setCodingRate4(5);
+  LoRa.disableCrc();
+  LoRa.setPreambleLength(8);
   LoRa.setSyncWord(0xF3);
   Serial.println("LoRa OK. Starting readings...\n");
 }

@@ -27,8 +27,8 @@ This guide details the wiring connections and testing procedures for the Point-t
 
 | SX127x Pin | RPi Pin (Physical) | RPi GPIO (BCM) | Description      |
 |------------|--------------------|----------------|------------------|
-| VCC        | Pin 1 or 17        | 3.3V           | Power            |
-| GND        | Pin 6, 9, 20 etc.  | GND            | Ground           |
+| VCC        | Pin 17             | 3.3V           | Power            |
+| GND        | Pin 20             | GND            | Ground           |
 | MISO       | Pin 21             | GPIO 9         | SPI MISO         |
 | MOSI       | Pin 19             | GPIO 10        | SPI MOSI         |
 | SCK        | Pin 23             | GPIO 11        | SPI SCLK         |

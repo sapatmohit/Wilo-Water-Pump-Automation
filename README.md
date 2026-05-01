@@ -59,6 +59,40 @@ Wilo Water Pump Automation/
 - **Real-time Monitoring**: Continuous sensor data monitoring and analysis
 - **Comprehensive Logging**: Detailed operation logging for trend analysis
 
+### LoRa Test Folder
+
+For direct ESP32-to-ESP32 LoRa validation, use:
+
+- [`firmware/lora_testing/README.md`](firmware/lora_testing/README.md)
+
+### ESP32 Sender -> Raspberry Pi CSV Logger
+
+For the production path where the ESP32 sender transmits pressure packets and the
+Raspberry Pi receives them and appends them to a CSV, use:
+
+- [`src/controller/lora_csv_receiver.py`](src/controller/lora_csv_receiver.py)
+
+Run on the Pi:
+
+```bash
+python3 src/controller/lora_csv_receiver.py
+```
+
+To auto-start on boot, install:
+
+```bash
+sudo cp src/controller/wilo-lora-csv-receiver.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable wilo-lora-csv-receiver
+sudo systemctl start wilo-lora-csv-receiver
+```
+
+The CSV is created automatically at:
+
+```text
+logs/lora/esp32_pressure_packets.csv
+```
+
 ### Simulation Features
 
 - **Fast-Forward Simulation**: 30-day simulation with 60x speed
