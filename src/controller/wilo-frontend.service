@@ -1,0 +1,18 @@
+﻿[Unit]
+Description=Wilo Water Pump React Frontend
+After=network.target wilo-server.service
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=wilopi
+WorkingDirectory=/home/wilopi/Desktop/Wilo-Water-Pump-Automation/dashboard
+ExecStart=/usr/bin/npm run preview -- --host 0.0.0.0 --port 8080
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

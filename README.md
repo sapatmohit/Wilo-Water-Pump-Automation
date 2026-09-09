@@ -1,6 +1,87 @@
-# Wilo Water Pump Automation System
+# Wilo AI Water Transfer System
 
-A professional water pump automation system with predictive control, historical pattern analysis, and intelligent scheduling capabilities.
+A professional IoT and AI-powered industrial water pump automation system featuring real-time hydrostatic tank estimation, LoRa pressure telemetry, ACS712 current sensing, deterministic festival/holiday policies (Rang Panchami & Indian holidays), municipal water cut handling, and machine learning schedule prediction.
+
+---
+
+## 🏆 JURY DAY QUICK START (ONE-CLICK LAUNCH)
+
+### Target Dashboard Address:
+```text
+http://192.168.137.64:8080
+```
+
+### Steps to Run on Jury Day:
+1. **Power Hardware**: Power on the Raspberry Pi 4, ESP32 transmitter, and pump relay electronics.
+2. **Connect Network**: Ensure your Windows PC and the Raspberry Pi are connected to the same network / Wi-Fi / phone hotspot (`192.168.137.64`).
+3. **Double Click**: Run [`Run-Wilo.bat`](Run-Wilo.bat) from this repository on your Windows PC.
+4. **Automated Verification**:
+   - `[1/4]` Pings Raspberry Pi at `192.168.137.64`.
+   - `[2/4]` Verifies dashboard port `8080`.
+   - `[3/4]` Starts services via SSH automatically if not already active.
+   - `[4/4]` Confirms service readiness.
+5. **Browser Opens Automatically**: Displays the full live dashboard at `http://192.168.137.64:8080`.
+6. **Verify Live Telemetry**:
+   - **Upper Tank Pressure**: Live readings streamed over LoRa from ESP32.
+   - **Motor Current**: Live RMS current measured by ADS1115 / ACS712.
+   - **Pump Relay State**: Real GPIO 17 output state.
+   - **Festival Policy**: Rang Panchami auto-start restriction (< 19:00 IST) active and visible.
+
+---
+
+## 🏛️ System Architecture
+
+```text
+                                 WINDOWS PC (OPERATOR / JURY)
+                                              │
+                                 LAN / Wi-Fi (192.168.137.64)
+                                              │
+                                              ▼
+                             RASPBERRY PI (192.168.137.64)
+                                              │
+               ┌──────────────────────────────┴──────────────────────────────┐
+               │                                                             │
+               ▼                                                             ▼
+     React Dashboard (Vite)                                         Flask API Server
+     Port 8080 (0.0.0.0)                                            Port 5050 (127.0.0.1)
+     ├── SCADA Simulation View                                      ├── SSE Telemetry Stream (/stream)
+     ├── Admin Hardware Diagnostics                                 ├── Sensor Status (/api/hardware/status)
+     ├── Municipal Water Cut Management                             ├── Festival Policies (/api/festival/*)
+     └── Festival Policy Calendar                                   └── Pump Control API (/api/pump/*)
+               │                                                             │
+               └──────────────────────────────┬──────────────────────────────┘
+                                              │
+                                              ▼
+                                   CONTROLLER PIPELINE
+                                              │
+               ┌──────────────────────────────┼──────────────────────────────┐
+               │                              │                              │
+               ▼                              ▼                              ▼
+          LoRa RX (SPI)                 ADC Sensors                    Relay (GPIO)
+          SX1278 (433 MHz)              ADS1115 (I2C)                  GPIO 17 (Pump)
+          ESP32 Telemetry               ACS712 Current                 GPIO 27 (Valve)
+               │                        ZMPT101B Voltage               Override Buttons
+               └──────────────────────────────┬──────────────────────────────┘
+                                              │
+                                              ▼
+                                   DECISION & POLICY CHAIN
+                                              │
+                                              ▼
+                                   [ EMERGENCY STOP LAYER ]
+                                              ↓
+                                   [ SENSOR SAFETY GUARDS ]
+                                    (Dry-Run, Overfill, Stale)
+                                              ↓
+                                   [ DETERMINISTIC POLICIES ]
+                                    (Rang Panchami, Water Cuts)
+                                              ↓
+                                   [ ML PREDICTIVE SCHEDULE ]
+                                              ↓
+                                        RELAY OUTPUT
+```
+
+---
+
 
 ## 🏗️ Project Structure
 
@@ -181,81 +262,66 @@ Test sketches also live in `firmware/`: `esp32_relay_test/`, `esp32_lora_hello/`
 
 ---
 
-### 2. Raspberry Pi — Backend (controller + server)
+### 2. Raspberry Pi Deployment (Automated or Manual)
 
-The Pi is the backend. It needs two processes running: the **controller** (owns the relay/GPIO) and the **dashboard server** (serves the UI + API).
+The Raspberry Pi runs the complete hardware loop:
+- **Pump Controller (`pump_controller.py`)**: Runs pump logic, LoRa packet parsing, ADS1115 sensor reading, and GPIO 17 relay control.
+- **Flask API Backend (`server.py`)**: Runs on port `5050` (or serves built SPA), handles REST API, auth, and SSE `/stream`.
+- **React Frontend (`dashboard/`)**: Runs on port `8080` (binds `0.0.0.0`) and proxies API calls to Flask.
 
-**Install dependencies (on the Pi):**
+#### Option A: One-Command Automated Setup (Recommended)
+Automatically builds the dashboard, installs systemd services, and enables auto-start on boot:
+```bash
+git clone https://github.com/sapatmohit/Wilo-Water-Pump-Automation.git
+cd Wilo-Water-Pump-Automation
+pip install -r requirements.txt
+bash scripts/setup_systemd.sh
+```
 
+#### Option B: Manual Startup via Script
 ```bash
 cd Wilo-Water-Pump-Automation
-python3 -m venv env && source env/bin/activate
-
-# ML + core
 pip install -r requirements.txt
-# Pi hardware drivers (GPIO, SPI, ADC)
-pip install -r src/controller/requirements.txt
-# Backend web server
-pip install flask pyserial
+cd dashboard && npm install && npm run build && cd ..
+bash start_wilo.sh
 ```
 
-**a) Pump controller** — the decision engine + relay control:
-
+#### Option C: Running Services Individually
 ```bash
-cd src/controller
-python3 pump_controller.py            # LIVE — drives real GPIO/relay
-python3 pump_controller.py --dry-run  # no GPIO, safe to test off-Pi
-python3 pump_controller.py --verbose  # extra debug logging
+# 1. Start Pump Controller (in terminal 1)
+python3 src/controller/pump_controller.py
+
+# 2. Start Flask Telemetry Backend (in terminal 2)
+python3 src/dashboard/server.py --port 5050
+
+# 3. Start React Frontend (in terminal 3)
+cd dashboard
+npm run preview -- --host 0.0.0.0 --port 8080
+# Or for live hot-reload development:
+npm run dev -- --host 0.0.0.0 --port 8080
 ```
-
-**b) Backend / dashboard server** — Flask API + Server-Sent-Events feed:
-
-```bash
-cd src/dashboard
-python3 server.py                 # serves on http://<pi-ip>:5050
-python3 server.py --port 5050 --fresh
-```
-
-Open `http://<pi-ip>:5050` for the simple built-in dashboard, or point the React frontend (below) at it for the full UI.
-
-**Run on boot (systemd, recommended for production):**
-
-```bash
-sudo cp src/controller/wilo-pump.service /etc/systemd/system/
-sudo cp src/controller/wilo-lora-csv-receiver.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now wilo-pump wilo-lora-csv-receiver
-# check status / logs
-systemctl status wilo-pump
-journalctl -u wilo-pump -f
-```
-
-> ⚠️ The `.service` files hardcode `User=` and `WorkingDirectory=` (`pi` / `wilopi`). Edit them to match your Pi's username and clone path before installing.
 
 ---
 
-### 3. Frontend — React Web Dashboard
+### 3. Windows PC — Local Development & Jury Execution
 
-The full UI lives in `dashboard/` (Vite + React + shadcn/ui). It can run on the Pi or any PC on the same network as the backend.
-
-```bash
-cd dashboard
-bun install        # or: npm install
-bun dev            # or: npm run dev  → http://localhost:8080
+#### A. Jury Day Execution (Connecting to Raspberry Pi):
+Simply double-click:
+```bat
+Run-Wilo.bat
 ```
+This tests connectivity to `192.168.137.64`, starts services over SSH if needed, waits for port `8080`, and opens `http://192.168.137.64:8080`.
 
-- In **dev**, Vite (port `8080`) proxies `/api`, `/stream`, `/latest` to `http://127.0.0.1:5050` — so run it **on the Pi**, or set `VITE_API_BASE_URL` to the Pi's address:
+#### B. Local Windows Development Mode (Offline / Mock Hardware):
+```bash
+# Terminal 1: Backend
+python src/dashboard/server.py --port 5050
 
-  ```bash
-  VITE_API_BASE_URL="http://<pi-ip>:5050" bun dev
-  ```
-
-- For a **production build**:
-
-  ```bash
-  bun run build      # outputs to dashboard/dist
-  bun run preview    # or serve dist/ with any static host
-  ```
+# Terminal 2: Frontend
+cd dashboard
+npm run dev
+```
+Open `http://localhost:8080` in your browser. All hardware gracefully reports mock/offline status without errors.
 
 ---
 
@@ -489,10 +555,10 @@ Join the laptop to the same phone hotspot. Phone hotspots often **don't** resolv
 ### 4. SSH in from the laptop
 
 ```bash
-# macOS / Linux / Windows (PowerShell or Terminal)
-# use the IP you found on the hotspot in step 3
-ssh wilopi@172.20.10.5
-# …or by hostname if mDNS works on your hotspot
+# Using the fixed deployment IP:
+ssh wilopi@192.168.137.64
+
+# …or by hostname if mDNS works on your network:
 ssh wilopi@wilopi.local
 ```
 
@@ -504,52 +570,51 @@ Generate a key on the **laptop** (skip if you already have `~/.ssh/id_ed25519.pu
 
 ```bash
 ssh-keygen -t ed25519            # press Enter through the prompts
-ssh-copy-id wilopi@wilopi.local  # copies your public key to the Pi
+ssh-copy-id wilopi@192.168.137.64 # copies your public key to the Pi
 ```
 
-Now `ssh wilopi@wilopi.local` logs in with no password. Add a shortcut in `~/.ssh/config` on the laptop:
-
-```text
-Host wilopi
-    HostName wilopi.local
-    User wilopi
-```
-
-…then just `ssh wilopi`.
+Now `ssh wilopi@192.168.137.64` logs in with no password.
 
 ### 6. Reach the dashboard from the laptop browser
 
-On the same hotspot you can usually just open the Pi's IP directly — start `server.py` on the Pi and browse to `http://172.20.10.5:5050` from the laptop.
-
-If a port isn't reachable, tunnel it over SSH instead:
-
-```bash
-# Forward Pi's :5050 to laptop's localhost:5050
-ssh -L 5050:localhost:5050 wilopi@172.20.10.5
-# Then open http://localhost:5050 in the laptop browser
+Browse directly to:
+```text
+http://192.168.137.64:8080
 ```
+Or use [`Run-Wilo.bat`](Run-Wilo.bat) for automated connectivity check and browser launch.
 
-### 7. Run the controller / server over the SSH session
+---
 
-```bash
-ssh wilopi@172.20.10.5
-cd Wilo-Water-Pump-Automation
+## 🔧 Comprehensive Troubleshooting Guide
 
-# start the pieces (see the "How to Run" section for details)
-python3 src/controller/pump_controller.py &
-python3 src/dashboard/server.py &
+### 1. Raspberry Pi Unreachable (`192.168.137.64`)
+- Ensure the Pi is powered with a dedicated 5V 3A USB-C power supply.
+- Check that your laptop Wi-Fi is connected to the same network / phone hotspot.
+- On Windows PowerShell, test: `ping 192.168.137.64` or `arp -a | findstr 192.168.137`.
+- If using a phone hotspot, ensure "AP Isolation / Client Isolation" is disabled.
 
-# or manage the systemd services
-sudo systemctl status wilo-pump
-journalctl -u wilo-pump -f
-```
+### 2. Port 8080 Unavailable
+- Check if frontend is running: `ssh wilopi@192.168.137.64 "sudo systemctl status wilo-frontend"`
+- Verify port binding: `ssh wilopi@192.168.137.64 "sudo ss -tulpn | grep 8080"`
+- To manually start: `cd ~/Desktop/Wilo-Water-Pump-Automation/dashboard && npm run preview -- --host 0.0.0.0 --port 8080`
 
-> To control a **running** controller from the laptop without racing GPIO, use the terminal UI in `tui/` (it sends override commands over SSH) — set `WILO_PI_HOST=wilopi.local` and `WILO_PI_USER=wilopi`.
+### 3. Backend (Port 5050) Unavailable
+- Check status: `sudo systemctl status wilo-server`
+- Check logs: `journalctl -u wilo-server -n 50 --no-pager`
+- Verify health: `curl -s http://127.0.0.1:5050/api/health`
 
-### Troubleshooting SSH
+### 4. LoRa ESP32 Telemetry "TIMEOUT" or "OFFLINE"
+- Verify ESP32 is powered and the OLED/Serial shows `LoRa sent #...`.
+- Verify SPI bus is enabled on the Pi: `ls /dev/spidev0.*` (run `sudo raspi-config` -> Interfaces -> SPI -> Enable if missing).
+- Ensure frequency matches on both sides: `433E6` (433 MHz).
+- Check packet log: `tail -n 20 logs/lora/esp32_pressure_packets.csv`.
 
-- **Pi never appears on the hotspot** — the hotspot SSID/password changed, or the Pi booted before the hotspot was on. Fix the Wi-Fi in step 2 and power-cycle the Pi with the hotspot already running.
-- **`ssh: connect to host … port 22: Connection refused`** — SSH isn't enabled on the Pi (see step 1).
-- **`wilopi.local` not found** — phone hotspots usually don't do mDNS; use the raw IP from step 3 instead.
-- **`Connection timed out`** — Pi and laptop aren't on the **same** hotspot, or the Pi is off. Some hotspots also enable *client isolation* (AP isolation) which blocks device-to-device traffic — turn it off in the phone's hotspot settings if available.
-- **`REMOTE HOST IDENTIFICATION HAS CHANGED`** — the Pi was reimaged or got a new IP; clear the old key with `ssh-keygen -R 172.20.10.5`.
+### 5. Current Sensor Reading 0 A or Offline
+- Ensure ADS1115 I2C connection is seated: `i2cdetect -y 1` should show address `0x48`.
+- Ensure CT sensor clamp is around only ONE live conductor (not around a 2-wire cable).
+
+### 6. Relay Not Clicking
+- Check GPIO 17 wiring: Pin 11 on Raspberry Pi 4.
+- Verify manual pump toggle: `curl -X POST http://127.0.0.1:5050/api/pump/on`
+- Test relay script: `python3 -c "import RPi.GPIO as G; G.setmode(G.BCM); G.setup(17, G.OUT); G.output(17, G.LOW); import time; time.sleep(2); G.output(17, G.HIGH); G.cleanup()"`
+

@@ -6,9 +6,9 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
-User=pi
-WorkingDirectory=/home/pi/Wilo-Water-Pump-Automation/src/controller
-ExecStart=/usr/bin/python3 pump_controller.py
+User=wilopi
+WorkingDirectory=/home/wilopi/Desktop/Wilo-Water-Pump-Automation
+ExecStart=/usr/bin/python3 src/controller/pump_controller.py
 Restart=on-failure
 RestartSec=10
 StandardOutput=journal

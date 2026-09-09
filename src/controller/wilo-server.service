@@ -1,0 +1,18 @@
+﻿[Unit]
+Description=Wilo Water Pump Flask API Backend
+After=network.target
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=wilopi
+WorkingDirectory=/home/wilopi/Desktop/Wilo-Water-Pump-Automation
+ExecStart=/usr/bin/python3 src/dashboard/server.py --port 5050
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
