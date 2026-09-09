@@ -55,6 +55,15 @@ class PumpDecision:
         return f"{self.action} [{self.state.value}] {self.reason}"
 
 
+def _safe_time_diff(t1: datetime, t2: datetime) -> timedelta:
+    """Timezone-safe difference between two datetimes (handles naive vs aware)."""
+    if t1.tzinfo and not t2.tzinfo:
+        t1 = t1.replace(tzinfo=None)
+    elif t2.tzinfo and not t1.tzinfo:
+        t2 = t2.replace(tzinfo=None)
+    return t1 - t2
+
+
 # ── Decision engine ──────────────────────────────────────────
 
 class HybridPumpLogic:
@@ -136,16 +145,17 @@ class HybridPumpLogic:
 
     # ── Main decision ────────────────────────────────────────
 
-    def decide(self, upper_pct, pump_is_on, current_amps=None, voltage_ac=None) -> PumpDecision:
+    def decide(self, upper_pct, pump_is_on, current_amps=None, voltage_ac=None, now: datetime | None = None) -> PumpDecision:
         """
         Args:
             upper_pct:   Upper tank level 0-100 (None if unknown)
             pump_is_on:  Current relay state
             current_amps: Measured pump current (None if ADC unavailable)
+            now:         Optional datetime for time-testing / simulation
         Returns:
             PumpDecision with .action in {'ON','OFF','HOLD'}
         """
-        now = datetime.now()
+        now = now or datetime.now()
 
         # ── P0  Manual mode — freeze all automation ──────────
         # When manual mode is active, only explicit override ON/OFF commands
@@ -163,7 +173,7 @@ class HybridPumpLogic:
 
         # ── P1  Power-cut recovery ───────────────────────────
         if self.power_restore_ts:
-            elapsed = now - self.power_restore_ts
+            elapsed = _safe_time_diff(now, self.power_restore_ts)
             if elapsed < self.power_delay:
                 rem = (self.power_delay - elapsed).total_seconds()
                 return PumpDecision('OFF', PumpState.OFF_POWER_RESTORE,
@@ -175,7 +185,7 @@ class HybridPumpLogic:
         # An explicit OFF must be respected even when the tank is CRITICAL LOW —
         # the operator has decided the pump stays off, full stop.
         if self.override:
-            if self.override_time and (now - self.override_time) > self.ovr_timeout:
+            if self.override_time and _safe_time_diff(now, self.override_time) > self.ovr_timeout:
                 logger.info("Manual override expired")
                 self.override = None
                 self.override_time = None
@@ -188,24 +198,28 @@ class HybridPumpLogic:
             if self.last_lora_ts is None:
                 return self._off(PumpState.OFF_LORA_TIMEOUT,
                     "No valid LoRa packet received yet")
-            if (now - self.last_lora_ts) > self.lora_timeout:
+            if _safe_time_diff(now, self.last_lora_ts) > self.lora_timeout:
                 return self._off(PumpState.OFF_LORA_TIMEOUT,
-                    f"LoRa data stale ({(now - self.last_lora_ts).total_seconds():.0f}s old)")
+                    f"LoRa data stale ({_safe_time_diff(now, self.last_lora_ts).total_seconds():.0f}s old)")
 
         # ── P2  Emergency thresholds ─────────────────────────
         if upper_pct is not None:
             if upper_pct >= self.crit_high:
                 return self._off(PumpState.OFF_EMERGENCY,
-                    f"Upper tank CRITICAL HIGH {upper_pct:.1f}% ≥ {self.crit_high}%")
+                    f"Upper tank CRITICAL HIGH {upper_pct:.1f}% >= {self.crit_high}%")
             if upper_pct <= self.crit_low:
+                if not pump_is_on:
+                    allowed, block_reason = self._check_auto_start_allowed(now, "critical low auto-start")
+                    if not allowed:
+                        return PumpDecision('HOLD', self.current_state, block_reason)
                 return self._on(PumpState.ON_EMERGENCY, now,
-                    f"Upper tank CRITICAL LOW {upper_pct:.1f}% ≤ {self.crit_low}%")
+                    f"Upper tank CRITICAL LOW {upper_pct:.1f}% <= {self.crit_low}%")
 
         # ── P3  Safety guards ────────────────────────────────
         # LoRa timeout
-        if self.last_lora_ts and (now - self.last_lora_ts) > self.lora_timeout:
+        if self.last_lora_ts and _safe_time_diff(now, self.last_lora_ts) > self.lora_timeout:
             return self._off(PumpState.OFF_LORA_TIMEOUT,
-                f"No LoRa data for {(now - self.last_lora_ts).total_seconds():.0f}s")
+                f"No LoRa data for {_safe_time_diff(now, self.last_lora_ts).total_seconds():.0f}s")
 
         # Sensor fault (3+ consecutive)
         if self.consec_faults >= 3:
@@ -214,7 +228,7 @@ class HybridPumpLogic:
 
         # Max continuous run
         if pump_is_on and self.pump_start_time:
-            run_time = now - self.pump_start_time
+            run_time = _safe_time_diff(now, self.pump_start_time)
             if run_time > self.max_run:
                 return self._off(PumpState.OFF_MAX_RUN,
                     f"Max run exceeded ({run_time.total_seconds()/60:.0f}min)")
@@ -244,26 +258,49 @@ class HybridPumpLogic:
             if circular_delta_h < window:
                 # Inside ML window — check if scheduled duration has elapsed
                 if pump_is_on and self.pump_start_time:
-                    run_min = (now - self.pump_start_time).total_seconds() / 60
+                    run_min = _safe_time_diff(now, self.pump_start_time).total_seconds() / 60
                     if run_min >= pred_d:
                         return self._off(PumpState.OFF,
                             f"ML schedule complete ({run_min:.0f}/{pred_d:.0f}min)")
+                # SAFETY CHECK: Cancel AI schedule if tank is already full
+                if upper_pct is not None and upper_pct >= self.high:
+                    return self._off(PumpState.OFF,
+                        f"ML schedule skipped: tank already full ({upper_pct:.1f}% >= {self.high}%)")
+
+                allowed, block_reason = self._check_auto_start_allowed(now, "ML schedule start")
+                if not allowed:
+                    return PumpDecision('HOLD', self.current_state, block_reason)
+
                 return self._on(PumpState.ON_ML_SCHEDULED, now,
                     f"ML schedule: {pred_h:.2f}h for {pred_d:.0f}min")
 
         # ── P5  Normal threshold hysteresis ──────────────────
         if upper_pct is not None:
             if not pump_is_on and upper_pct <= self.low:
+                allowed, block_reason = self._check_auto_start_allowed(now, "threshold start")
+                if not allowed:
+                    return PumpDecision('HOLD', self.current_state, block_reason)
                 return self._on(PumpState.ON_THRESHOLD, now,
-                    f"Upper tank {upper_pct:.1f}% ≤ {self.low}%")
+                    f"Upper tank {upper_pct:.1f}% <= {self.low}%")
             if pump_is_on and upper_pct >= self.high:
                 return self._off(PumpState.OFF,
-                    f"Upper tank {upper_pct:.1f}% ≥ {self.high}%")
+                    f"Upper tank {upper_pct:.1f}% >= {self.high}%")
 
         # ── Default: hold current state ──────────────────────
         return PumpDecision('HOLD', self.current_state, "No trigger — holding")
 
     # ── Internal helpers ─────────────────────────────────────
+
+    def _check_auto_start_allowed(self, now, trigger_name: str) -> tuple[bool, str | None]:
+        """Verify that deterministic festival policy permits a new automated start."""
+        try:
+            from festival_policy import evaluate_festival_policy
+            res = evaluate_festival_policy(dt=now, pump_is_on=False)
+            if not res.get("automatic_start_allowed", True):
+                return False, f"Automated {trigger_name} BLOCKED by festival policy: {res['reason']}"
+        except Exception as e:
+            logger.debug(f"Festival policy check error: {e}")
+        return True, None
 
     def _on(self, state, now, reason):
         if self.pump_start_time is None:

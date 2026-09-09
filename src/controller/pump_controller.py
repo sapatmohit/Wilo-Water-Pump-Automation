@@ -15,6 +15,7 @@ Usage:
 import sys
 import os
 import json
+import csv
 import time
 import signal
 import logging
@@ -138,12 +139,8 @@ class PumpController:
             self.lora.receive()
             logger.info("LoRa receiver initialised — listening on 433 MHz")
         except Exception as e:
-            if self.dry_run:
-                logger.warning(f"LoRa init skipped (dry-run): {e}")
-                self.lora = None
-            else:
-                logger.critical(f"LoRa init FAILED: {e}")
-                raise
+            logger.warning(f"LoRa direct hardware init skipped/unavailable: {e}. Controller will receive packets via CSV channel.")
+            self.lora = None
 
         # ── 2. Relay controller ──
         if not self.dry_run:
@@ -296,6 +293,57 @@ class PumpController:
         except Exception as e:
             logger.debug(f"Runtime status write failed: {e}")
 
+    def _append_lora_packet_csv(self, pkt, rssi, snr, raw_str):
+        csv_path = CFG.LORA_PACKET_CSV_PATH
+        os.makedirs(os.path.dirname(os.path.abspath(csv_path)), exist_ok=True)
+        write_header = (not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0)
+        with open(csv_path, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow([
+                    "timestamp", "device", "sensor", "status",
+                    "voltage_v", "pressure_kpa", "pkt", "rssi_dbm",
+                    "snr_db", "raw_payload", "parse_error"
+                ])
+            writer.writerow([
+                datetime.now().isoformat(timespec="seconds"),
+                pkt.get("device", "esp32"),
+                pkt.get("sensor", ""),
+                pkt.get("status", "ok"),
+                pkt.get("voltage", 0.0),
+                pkt.get("pressure_kpa", 0.0),
+                pkt.get("pkt", 0),
+                rssi if rssi is not None else "",
+                snr if snr is not None else "",
+                raw_str.strip() if raw_str else "",
+                ""
+            ])
+
+    def _read_latest_lora_packet_csv(self):
+        csv_path = CFG.LORA_PACKET_CSV_PATH
+        if not os.path.exists(csv_path):
+            return None
+        try:
+            with open(csv_path, 'r', encoding='utf-8', errors='replace') as f:
+                reader = csv.DictReader(f)
+                latest_row = None
+                for row in reader:
+                    if row.get('pkt') and row.get('pressure_kpa'):
+                        latest_row = row
+                if latest_row:
+                    return {
+                        'device': latest_row.get('device', 'esp32'),
+                        'sensor': latest_row.get('sensor', ''),
+                        'status': latest_row.get('status', 'ok'),
+                        'voltage': float(latest_row.get('voltage_v') or latest_row.get('voltage') or 0),
+                        'pressure_kpa': float(latest_row.get('pressure_kpa', 0)),
+                        'pkt': int(latest_row['pkt']),
+                        'timestamp': latest_row.get('timestamp', ''),
+                    }
+        except Exception:
+            pass
+        return None
+
     # ── Main loop ─────────────────────────────────────────────
 
     def run(self):
@@ -322,6 +370,10 @@ class PumpController:
 
                         if pkt_data:
                             self.last_packet = pkt_data
+                            try:
+                                self._append_lora_packet_csv(pkt_data, rssi, snr, raw_str)
+                            except Exception as ex:
+                                logger.debug(f"LoRa CSV append error: {ex}")
 
                             if pkt_data['status'] == 'fault':
                                 self.logic.signal_lora_fault()
@@ -348,6 +400,19 @@ class PumpController:
                                     )
                     except Exception as e:
                         logger.error(f"LoRa read error: {e}")
+                elif not self.lora:
+                    # Fallback to reading CSV if separate receiver service is running
+                    csv_pkt = self._read_latest_lora_packet_csv()
+                    if csv_pkt and csv_pkt.get('pkt') != (self.last_packet or {}).get('pkt'):
+                        self.last_packet = csv_pkt
+                        if csv_pkt.get('status') == 'fault':
+                            self.logic.signal_lora_fault()
+                            self.upper_pct = None
+                        else:
+                            up = pressure_to_level_pct(csv_pkt.get('pressure_kpa'))
+                            if up is not None:
+                                self.logic.signal_lora_ok()
+                                self.upper_pct = up
 
                 # ── Read current/voltage ──
                 cv = self.sensor.read_all()

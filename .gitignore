@@ -210,5 +210,13 @@ skills-lock.json
 .arduino-build/
 .arduino-build-recv/
 
-# Local runtime state
-logs/pump/pump_state.json
+# Local runtime state and dynamic logs
+logs/pump/*.json
+logs/pump/.tmp-*
+logs/pump/rpi_pump_log.csv
+logs/lora/
+data/wilo_system.db
+data/emergency_stop.json
+*.env.local
+.env.local
+frontend/.env.local

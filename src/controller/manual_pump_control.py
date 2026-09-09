@@ -11,7 +11,51 @@ import sys
 import time
 from datetime import datetime
 
-import RPi.GPIO as GPIO
+try:
+    import RPi.GPIO as GPIO
+except (ImportError, RuntimeError):
+    class MockGPIO:
+        BCM = 11
+        BOARD = 10
+        OUT = 0
+        IN = 1
+        HIGH = 1
+        LOW = 0
+        PUD_UP = 2
+        PUD_DOWN = 1
+        PUD_OFF = 0
+        _pins = {}
+        _pin_modes = {}
+
+        @classmethod
+        def setwarnings(cls, flag):
+            pass
+
+        @classmethod
+        def setmode(cls, mode):
+            pass
+
+        @classmethod
+        def setup(cls, pin, mode, initial=None, pull_up_down=None):
+            cls._pin_modes[pin] = mode
+            if initial is not None:
+                cls._pins[pin] = initial
+            elif pull_up_down == cls.PUD_UP:
+                cls._pins[pin] = cls.HIGH
+
+        @classmethod
+        def output(cls, pin, value):
+            cls._pins[pin] = value
+
+        @classmethod
+        def input(cls, pin):
+            return cls._pins.get(pin, cls.HIGH)
+
+        @classmethod
+        def cleanup(cls):
+            cls._pins.clear()
+
+    GPIO = MockGPIO
 
 import tank_config as CFG
 from runtime_channel import atomic_write_json, read_json
@@ -89,10 +133,8 @@ def set_pump(turn_on: bool, notify_controller: bool = True) -> dict:
 def read_status() -> dict:
     saved = read_json(CFG.DIRECT_PUMP_STATE_FILE) or {}
     saved_on = saved.get('pump_relay_on')
-    if saved_on is True:
-        _set_relay_outputs_on()
-    else:
-        _release_relay_outputs_off()
+    # SAFETY PATCH: Never allow a 'read' function to physically assert GPIO pins!
+    # This prevents the Flask server from randomly killing the pump controller's commands.
     return {
         'pump_relay_on': saved_on,
         'timestamp': saved.get('timestamp'),
